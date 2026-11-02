@@ -1,0 +1,57 @@
+name: REA installation and analysis smoke test
+
+on:
+  push:
+    branches:
+      - experiment/rea-install-smoke-20261102
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rea-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout isolated test branch
+        uses: actions/checkout@v4
+
+      - name: Set up supported Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+
+      - name: Install official REA package
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          npm install --global rea-agents@6.8.0
+
+      - name: Verify REA CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rea
+          rea --help
+          rea --version
+
+      - name: Analyze tiny self-authored JavaScript fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p rea-fixture
+          printf 'export function sum(a, b) { return a + b; }\n' > rea-fixture/index.js
+          printf '{"name":"rea-smoke-fixture","private":true,"type":"module"}\n' > rea-fixture/package.json
+          rea analyze-javascript-application "$PWD/rea-fixture" --json > rea-analysis.json
+          node --input-type=module -e "import fs from 'node:fs'; const report = JSON.parse(fs.readFileSync('rea-analysis.json','utf8')); console.log('REA output is valid JSON'); console.log(JSON.stringify(report).slice(0,3000));"
+
+      - name: Save analysis evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rea-smoke-evidence
+          path: rea-analysis.json
+          if-no-files-found: ignore
